@@ -21,6 +21,7 @@ from world import cprint
 from time import time
 
 class BasicDataset(Dataset):
+    # interface. 자신의 데이터셋 사용 가능
     def __init__(self):
         print("init dataset")
     
@@ -73,14 +74,16 @@ class LastFM(BasicDataset):
     Incldue graph information
     LastFM dataset
     """
-    def __init__(self, path="../data/lastfm"):
+    def __init__(self, path="./data/lastfm"):
         # train or test
         cprint("loading [last fm]")
         self.mode_dict = {'train':0, "test":1}
         self.mode    = self.mode_dict['train']
         # self.n_users = 1892
         # self.m_items = 4489
+        # read_table -> txt파일을 읽고 pd.DataFrame으로 변환.
         trainData = pd.read_table(join(path, 'data1.txt'), header=None)
+        # >>> 0\t1\t2
         # print(trainData.head())
         testData  = pd.read_table(join(path, 'test1.txt'), header=None)
         # print(testData.head())
@@ -89,6 +92,9 @@ class LastFM(BasicDataset):
         trustNet -= 1
         trainData-= 1
         testData -= 1
+        # 0 인덱스 때문에 모든 원소에서 1을 빼도 괜찮은가?
+        # lastfm 데이터셋을 제외한 모든 데이터셋은 [:, 0]가 userID를 의미한다는 것을 알 수 있지만,
+        # lastfm 데이터셋도 그러한가?
         self.trustNet  = trustNet
         self.trainData = trainData
         self.testData  = testData
@@ -99,15 +105,19 @@ class LastFM(BasicDataset):
         self.testUser  = np.array(testData[:][0])
         self.testUniqueUsers = np.unique(self.testUser)
         self.testItem  = np.array(testData[:][1])
+        # split train/test User, UniqueUsers, Item
         self.Graph = None
         print(f"LastFm Sparsity : {(len(self.trainUser) + len(self.testUser))/self.n_users/self.m_items}")
         
-        # (users,users)
+        # (users,users) Compressed Sparse Row matrix
+        # 관계가 있는 사람들간 1을 가진 희소 행렬
         self.socialNet    = csr_matrix((np.ones(len(trustNet)), (trustNet[:,0], trustNet[:,1]) ), shape=(self.n_users,self.n_users))
         # (users,items), bipartite graph
+        # 관계가 있는 user, item간 1을 가진 희소 행렬
         self.UserItemNet  = csr_matrix((np.ones(len(self.trainUser)), (self.trainUser, self.trainItem) ), shape=(self.n_users,self.m_items)) 
         
         # pre-calculate
+        # user와 상호작용이 있는 item의 인덱스 저장 (user, max(n_item))
         self._allPos = self.getUserPosItems(list(range(self.n_users)))
         self.allNeg = []
         allItems    = set(range(self.m_items))
@@ -115,6 +125,7 @@ class LastFM(BasicDataset):
             pos = set(self._allPos[i])
             neg = allItems - pos
             self.allNeg.append(np.array(list(neg)))
+            # allItems - postiveItems 하여 negativeItems 구하기
         self.__testDict = self.__build_test()
 
     @property
@@ -142,14 +153,32 @@ class LastFM(BasicDataset):
             user_dim = torch.LongTensor(self.trainUser)
             item_dim = torch.LongTensor(self.trainItem)
             
+            # n_users를 더함으로써, item의 인덱스가 user와 겹치지 않게 하는것 같음
             first_sub = torch.stack([user_dim, item_dim + self.n_users])
+            '''
+            [[user1, user2, ... , user_n], 
+             [item_1, item2, ... , item_m]]
+            '''
             second_sub = torch.stack([item_dim+self.n_users, user_dim])
+            '''
+            [[item_1, item2, ... , item_m],
+             [user1, user2, ... , user_n]]
+            '''
             index = torch.cat([first_sub, second_sub], dim=1)
+            '''
+            [[user1, user2, ... , user_n, item_1, item2, ... , item_m], 
+             [item_1, item2, ... , item_m, user1, user2, ... , user_n]]
+            '''
+            # .size(dim) -> tensor에서 dim 차원의 열 개수 반환. 열 개수만큼 1을 가진 1D tensor
             data = torch.ones(index.size(-1)).int()
+            # index에 따라서 연관이 있는 요소에 값 1을 갖는 희소 행렬
             self.Graph = torch.sparse.IntTensor(index, data, torch.Size([self.n_users+self.m_items, self.n_users+self.m_items]))
+            # 밀집 행렬로 변환
             dense = self.Graph.to_dense()
+            # 각 행에서 모든 요소를 sum. shape -> (self.n_users+self.m_items, )
             D = torch.sum(dense, dim=1).float()
-            D[D==0.] = 1.
+            D[D==0.] = 1. # -> 정규화를 위한 노드의 강도 계산
+            # shape -> (1, self.n_users+self.m_items)
             D_sqrt = torch.sqrt(D).unsqueeze(dim=0)
             dense = dense/D_sqrt
             dense = dense/D_sqrt.t()
@@ -284,6 +313,7 @@ class Loader(BasicDataset):
         self.users_D[self.users_D == 0.] = 1
         self.items_D = np.array(self.UserItemNet.sum(axis=0)).squeeze()
         self.items_D[self.items_D == 0.] = 1.
+        # user/item degree 계산. 각 user/item가 각 item/user와 몇 개씩 상호작용 했는지 나타내는 1차원 배열 
         # pre-calculate
         self._allPos = self.getUserPosItems(list(range(self.n_user)))
         self.__testDict = self.__build_test()
@@ -405,3 +435,8 @@ class Loader(BasicDataset):
     #     for user in users:
     #         negItems.append(self.allNeg[user])
     #     return negItems
+
+# for debugging
+if __name__ == '__main__':
+    dataset = LastFM()
+    wait = input()
