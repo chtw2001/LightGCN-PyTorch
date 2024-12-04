@@ -170,23 +170,27 @@ class LastFM(BasicDataset):
              [item_1, item2, ... , item_m, user1, user2, ... , user_n]]
             '''
             # .size(dim) -> tensor에서 dim 차원의 열 개수 반환. 열 개수만큼 1을 가진 1D tensor
+            # ((user_n + item_m),)
             data = torch.ones(index.size(-1)).int()
-            # index에 따라서 연관이 있는 요소에 값 1을 갖는 희소 행렬
+            # 단위 희소 행렬 반환 ((user_n + item_m), (user_n + item_m))
             self.Graph = torch.sparse.IntTensor(index, data, torch.Size([self.n_users+self.m_items, self.n_users+self.m_items]))
             # 밀집 행렬로 변환
             dense = self.Graph.to_dense()
             # 각 행에서 모든 요소를 sum. shape -> (self.n_users+self.m_items, )
             D = torch.sum(dense, dim=1).float()
-            D[D==0.] = 1. # -> 정규화를 위한 노드의 강도 계산
-            # shape -> (1, self.n_users+self.m_items)
+            D[D==0.] = 1. # -> 정규화를 위한 노드의 강도 계산. 0은 1 바꾸기
+            # 가장 바깥쪽에 차원 추가. shape -> (1, self.n_users+self.m_items)
             D_sqrt = torch.sqrt(D).unsqueeze(dim=0)
-            dense = dense/D_sqrt
-            dense = dense/D_sqrt.t()
-            index = dense.nonzero()
+            # ((user_n+item_m), (user_n+item_m)) / (1, (user_n+item_m))
+            dense = dense/D_sqrt # 정규화
+            dense = dense/D_sqrt.t() # 전치 행렬로 정규화
+            # 행과 열에 모두 정규화 적용
+            index = dense.nonzero() # shape => (nnz, dim)
             data  = dense[dense >= 1e-9]
             assert len(index) == len(data)
             self.Graph = torch.sparse.FloatTensor(index.t(), data, torch.Size([self.n_users+self.m_items, self.n_users+self.m_items]))
             self.Graph = self.Graph.coalesce().to(world.device)
+            # self.Graph => user-item간 연결 정보가 담긴 그래프
         return self.Graph
 
     def __build_test(self):
@@ -218,6 +222,12 @@ class LastFM(BasicDataset):
     def getUserPosItems(self, users):
         posItems = []
         for user in users:
+            # .nonzeor() => 0이 아닌 index를 반환
+            # [[1, 0, 1],
+            #  [0, 0, 1]]
+            # >>> [[0, 0, 1], 
+            #      [0, 2, 2]]
+            # 그 중 item의 index 열만 반환
             posItems.append(self.UserItemNet[user].nonzero()[1])
         return posItems
     
@@ -377,6 +387,7 @@ class Loader(BasicDataset):
                 adj_mat = adj_mat.todok()
                 # adj_mat = adj_mat + sp.eye(adj_mat.shape[0])
                 
+                # 다른 방식으로 동일한 정규화 진행
                 rowsum = np.array(adj_mat.sum(axis=1))
                 d_inv = np.power(rowsum, -0.5).flatten()
                 d_inv[np.isinf(d_inv)] = 0.

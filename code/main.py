@@ -17,7 +17,8 @@ from register import dataset
 Recmodel = register.MODELS[world.model_name](world.config, dataset)
 Recmodel = Recmodel.to(world.device)
 bpr = utils.BPRLoss(Recmodel, world.config)
-
+# model 초기화, BPRLoss 초기화 살펴볼 단계
+# -------------------------------------------
 weight_file = utils.getFileName()
 print(f"load and save to {weight_file}")
 if world.LOAD:
