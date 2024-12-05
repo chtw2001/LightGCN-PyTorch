@@ -66,7 +66,11 @@ class PureMF(BasicModel):
         neg_emb   = self.embedding_item(neg.long())
         pos_scores= torch.sum(users_emb*pos_emb, dim=1)
         neg_scores= torch.sum(users_emb*neg_emb, dim=1)
+        # LogSigmoid 함수와 y=-x축에 대해 대칭
+        # NGCF -> maxi = nn.LogSigmoid()(pos_scores - neg_scores)
+        # pos_scores가 클수록 손실이 작음
         loss = torch.mean(nn.functional.softplus(neg_scores - pos_scores))
+        # l2 노름 규제항
         reg_loss = (1/2)*(users_emb.norm(2).pow(2) + 
                           pos_emb.norm(2).pow(2) + 
                           neg_emb.norm(2).pow(2))/float(len(users))
@@ -81,6 +85,7 @@ class PureMF(BasicModel):
         return self.f(scores)
 
 class LightGCN(BasicModel):
+    # Recmodel = register.MODELS[world.model_name](world.config, dataset)
     def __init__(self, 
                  config:dict, 
                  dataset:BasicDataset):
@@ -92,10 +97,14 @@ class LightGCN(BasicModel):
     def __init_weight(self):
         self.num_users  = self.dataset.n_users
         self.num_items  = self.dataset.m_items
-        self.latent_dim = self.config['latent_dim_rec']
+        self.latent_dim = self.config['latent_dim_rec'] # 64
         self.n_layers = self.config['lightGCN_n_layers']
         self.keep_prob = self.config['keep_prob']
-        self.A_split = self.config['A_split']
+        self.A_split = self.config['A_split'] # config['A_split'] = False
+        # num_embeddings: size of the dictionary of embeddings
+        # embedding_dim: the size of each embedding vector
+        # NGCF는 gc, bi 가중치를 학습
+        # LightGCN은 임베딩 자체를 학습
         self.embedding_user = torch.nn.Embedding(
             num_embeddings=self.num_users, embedding_dim=self.latent_dim)
         self.embedding_item = torch.nn.Embedding(
@@ -105,10 +114,12 @@ class LightGCN(BasicModel):
 #             nn.init.xavier_uniform_(self.embedding_item.weight, gain=1)
 #             print('use xavier initilizer')
 # random normal init seems to be a better choice when lightGCN actually don't use any non-linear activation function
+            # embedding 텐서를 평균 0, 표준편차 0.1로 초기화
             nn.init.normal_(self.embedding_user.weight, std=0.1)
             nn.init.normal_(self.embedding_item.weight, std=0.1)
             world.cprint('use NORMAL distribution initilizer')
         else:
+            # self.config['user_emb'], self.config['item_emb']는 어디서도 초기화되지 않았음
             self.embedding_user.weight.data.copy_(torch.from_numpy(self.config['user_emb']))
             self.embedding_item.weight.data.copy_(torch.from_numpy(self.config['item_emb']))
             print('use pretarined data')
@@ -175,6 +186,7 @@ class LightGCN(BasicModel):
         all_users, all_items = self.computer()
         users_emb = all_users[users.long()]
         items_emb = all_items
+        # self.f = nn.Sigmoid()
         rating = self.f(torch.matmul(users_emb, items_emb.t()))
         return rating
     

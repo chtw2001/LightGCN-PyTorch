@@ -30,6 +30,7 @@ except:
 
 
 class BPRLoss:
+    # bpr = utils.BPRLoss(Recmodel, world.config)
     def __init__(self,
                  recmodel : PairWiseModel,
                  config : dict):
@@ -38,6 +39,7 @@ class BPRLoss:
         self.lr = config['lr']
         self.opt = optim.Adam(recmodel.parameters(), lr=self.lr)
 
+    # cri = bpr.stageOne(batch_users, batch_pos, batch_neg)
     def stageOne(self, users, pos, neg):
         loss, reg_loss = self.model.bpr_loss(users, pos, neg)
         reg_loss = reg_loss*self.weight_decay
@@ -47,6 +49,7 @@ class BPRLoss:
         loss.backward()
         self.opt.step()
 
+        # 손실값을 scalar값으로 반환
         return loss.cpu().item()
 
 
@@ -55,6 +58,7 @@ def UniformSample_original(dataset, neg_ratio = 1):
     allPos = dataset.allPos
     start = time()
     if sample_ext:
+        # cpp 샘플링 파일 있으면 실행
         S = sampling.sample_negative(dataset.n_users, dataset.m_items,
                                      dataset.trainDataSize, allPos, neg_ratio)
     else:
@@ -70,6 +74,7 @@ def UniformSample_original_python(dataset):
     total_start = time()
     dataset : BasicDataset
     user_num = dataset.trainDataSize
+    # 중복된 샘플 등장 가능
     users = np.random.randint(0, dataset.n_users, user_num)
     allPos = dataset.allPos
     S = []
@@ -89,6 +94,7 @@ def UniformSample_original_python(dataset):
                 continue
             else:
                 break
+        # user마다 pos/neg item 1개씩 샘플링
         S.append([user, positem, negitem])
         end = time()
         sample_time1 += end - start
@@ -112,10 +118,13 @@ def getFileName():
         file = f"lgn-{world.dataset}-{world.config['lightGCN_n_layers']}-{world.config['latent_dim_rec']}.pth.tar"
     return os.path.join(world.FILE_PATH,file)
 
+# utils.minibatch(users, posItems, negItems, batch_size=world.config['bpr_batch_size']))
+# kwargs for minibatch load user only
 def minibatch(*tensors, **kwargs):
-
+    # tensor = (users, posItems, negItems)
     batch_size = kwargs.get('batch_size', world.config['bpr_batch_size'])
 
+    # len(tensors) => train user 수
     if len(tensors) == 1:
         tensor = tensors[0]
         for i in range(0, len(tensor), batch_size):
@@ -133,12 +142,14 @@ def shuffle(*arrays, **kwargs):
         raise ValueError('All inputs to shuffle must have '
                          'the same length.')
 
+    # user의 수 만큼 random indices
     shuffle_indices = np.arange(len(arrays[0]))
     np.random.shuffle(shuffle_indices)
 
     if len(arrays) == 1:
         result = arrays[0][shuffle_indices]
     else:
+        # index를 랜덤하게 섞기
         result = tuple(x[shuffle_indices] for x in arrays)
 
     if require_indices:

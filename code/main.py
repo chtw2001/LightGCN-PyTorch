@@ -17,8 +17,7 @@ from register import dataset
 Recmodel = register.MODELS[world.model_name](world.config, dataset)
 Recmodel = Recmodel.to(world.device)
 bpr = utils.BPRLoss(Recmodel, world.config)
-# model 초기화, BPRLoss 초기화 살펴볼 단계
-# -------------------------------------------
+
 weight_file = utils.getFileName()
 print(f"load and save to {weight_file}")
 if world.LOAD:
@@ -37,16 +36,20 @@ if world.tensorboard:
 else:
     w = None
     world.cprint("not enable tensorflowboard")
-
+# 학습 살펴볼 차례
 try:
     for epoch in range(world.TRAIN_epochs):
         start = time.time()
+        # 10번에 1번 테스트 하는것은 동일
         if epoch %10 == 0:
             cprint("[TEST]")
+            # -------------------------------------------
             Procedure.Test(dataset, Recmodel, epoch, w, world.config['multicore'])
         output_information = Procedure.BPR_train_original(dataset, Recmodel, bpr, epoch, neg_k=Neg_k,w=w)
+        # f"loss{aver_loss:.3f}-{time_info}"
         print(f'EPOCH[{epoch+1}/{world.TRAIN_epochs}] {output_information}')
         torch.save(Recmodel.state_dict(), weight_file)
+        # early stopping x?
 finally:
     if world.tensorboard:
         w.close()

@@ -22,13 +22,15 @@ from sklearn.metrics import roc_auc_score
 
 CORES = multiprocessing.cpu_count() // 2
 
-
+# output_information = Procedure.BPR_train_original(dataset, Recmodel,  utils.BPRLoss(Recmodel, world.config), epoch, neg_k=Neg_k=1,w=w)
 def BPR_train_original(dataset, recommend_model, loss_class, epoch, neg_k=1, w=None):
     Recmodel = recommend_model
     Recmodel.train()
     bpr: utils.BPRLoss = loss_class
     
     with timer(name="Sample"):
+        # [user, positem, negitem]*len(train_user) -> (len(train_user), 3))
+        # S -> train_user 개수 만큼 [user, positem, negitem]가 들어있는 numpy 배열
         S = utils.UniformSample_original(dataset)
     users = torch.Tensor(S[:, 0]).long()
     posItems = torch.Tensor(S[:, 1]).long()
@@ -41,6 +43,7 @@ def BPR_train_original(dataset, recommend_model, loss_class, epoch, neg_k=1, w=N
     total_batch = len(users) // world.config['bpr_batch_size'] + 1
     aver_loss = 0.
     for (batch_i,
+        # ((batch_size, ), (batch_size, ), (batch_size, ))
          (batch_users,
           batch_pos,
           batch_neg)) in enumerate(utils.minibatch(users,
@@ -72,6 +75,7 @@ def test_one_batch(X):
             'ndcg':np.array(ndcg)}
         
             
+# Procedure.Test(dataset, Recmodel, epoch, w, world.config['multicore'])
 def Test(dataset, Recmodel, epoch, w=None, multicore=0):
     u_batch_size = world.config['test_u_batch_size']
     dataset: utils.BasicDataset
@@ -86,6 +90,7 @@ def Test(dataset, Recmodel, epoch, w=None, multicore=0):
                'recall': np.zeros(len(world.topks)),
                'ndcg': np.zeros(len(world.topks))}
     with torch.no_grad():
+        # testDict -> key: user, value: item 
         users = list(testDict.keys())
         try:
             assert u_batch_size <= len(users) / 10
@@ -97,12 +102,14 @@ def Test(dataset, Recmodel, epoch, w=None, multicore=0):
         # auc_record = []
         # ratings = []
         total_batch = len(users) // u_batch_size + 1
+        # batch_users -> (batch_size, )
         for batch_users in utils.minibatch(users, batch_size=u_batch_size):
+            # self.UserItemNet(train data사용)에서 user-item간 관계가 있는 인덱스를 반환
+            # -------------------------------------------
             allPos = dataset.getUserPosItems(batch_users)
             groundTrue = [testDict[u] for u in batch_users]
             batch_users_gpu = torch.Tensor(batch_users).long()
             batch_users_gpu = batch_users_gpu.to(world.device)
-
             rating = Recmodel.getUsersRating(batch_users_gpu)
             #rating = rating.cpu()
             exclude_index = []
