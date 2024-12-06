@@ -223,11 +223,14 @@ class timer:
 # ====================Metrics==============================
 # =========================================================
 def RecallPrecision_ATk(test_data, r, k):
+    # test_data -> (배치 크기, 유저, 유저별 상위 positem)
+    # r -> (배치 크기, [T, F, T, F ...])
     """
     test_data should be a list? cause users may have different amount of pos items. shape (test_batch, k)
     pred_data : shape (test_batch, k) NOTE: pred_data should be pre-sorted
     k : top-k
     """
+    # (배치 크기, scalar)
     right_pred = r[:, :k].sum(1)
     precis_n = k
     recall_n = np.array([len(test_data[i]) for i in range(len(test_data))])
@@ -246,7 +249,10 @@ def MRRatK_r(r, k):
     pred_data = pred_data.sum(1)
     return np.sum(pred_data)
 
+# Normalized Discounted Cumulative Gain
 def NDCGatK_r(test_data,r,k):
+    # test_data -> (배치 크기, 유저, 유저별 상위 positem)
+    # r -> (배치 크기, [T, F, T, F ...])
     """
     Normalized Discounted Cumulative Gain
     rel_i = 1 or 0, so 2^{rel_i} - 1 = 1 or 0
@@ -279,13 +285,18 @@ def AUC(all_item_scores, dataset, test_data):
     return roc_auc_score(r, test_item_scores)
 
 def getLabel(test_data, pred_data):
+    # test_data -> (배치 크기, 유저, 유저별 상위 positem)
+    # pred_data -> (배치 크기, 유저, 유저별 상위 positem)
     r = []
     for i in range(len(test_data)):
         groundTrue = test_data[i]
         predictTopK = pred_data[i]
+        # len -> len(predictTopK)
+        # predictTopK의 요소를 읽고 groundTrue 리스트에 있다면 T/F로 list생성
         pred = list(map(lambda x: x in groundTrue, predictTopK))
         pred = np.array(pred).astype("float")
         r.append(pred)
+    # 반환값 -> (배치 크기, [T, F, T, F ...])
     return np.array(r).astype('float')
 
 # ====================end Metrics=============================

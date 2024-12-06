@@ -59,10 +59,13 @@ def BPR_train_original(dataset, recommend_model, loss_class, epoch, neg_k=1, w=N
     timer.zero()
     return f"loss{aver_loss:.3f}-{time_info}"
     
-    
+# -------------------------------------------
 def test_one_batch(X):
+    # X = (rating_list, groundTrue_list)
+    # X = ((배치 크기, 유저, 유저별 상위 positem), (배치 크기, 유저, 유저별 상위 positem))
     sorted_items = X[0].numpy()
     groundTrue = X[1]
+    # (배치 크기, [T, F, T, F ...])
     r = utils.getLabel(groundTrue, sorted_items)
     pre, recall, ndcg = [], [], []
     for k in world.topks:
@@ -105,19 +108,23 @@ def Test(dataset, Recmodel, epoch, w=None, multicore=0):
         # batch_users -> (batch_size, )
         for batch_users in utils.minibatch(users, batch_size=u_batch_size):
             # self.UserItemNet(train data사용)에서 user-item간 관계가 있는 인덱스를 반환
-            # -------------------------------------------
             allPos = dataset.getUserPosItems(batch_users)
             groundTrue = [testDict[u] for u in batch_users]
             batch_users_gpu = torch.Tensor(batch_users).long()
             batch_users_gpu = batch_users_gpu.to(world.device)
+            # (batch_size, item_n)
             rating = Recmodel.getUsersRating(batch_users_gpu)
             #rating = rating.cpu()
-            exclude_index = []
-            exclude_items = []
+            exclude_index = [] # [idx, idx, ..., idx] 
+            exclude_items = [] # [item, item, ..., item]
             for range_i, items in enumerate(allPos):
                 exclude_index.extend([range_i] * len(items))
                 exclude_items.extend(items)
+            # 이미 관계가 있는 아이템은 제외하는것 같음. 하지만 왜?
             rating[exclude_index, exclude_items] = -(1<<10)
+            # >>> torch.return_types.topk(values=tensor([5., 4., 3.]), indices=tensor([4, 3, 2]))
+            # 상위 k개의 item index 반환. default 20
+            # (batch_size, max(20))
             _, rating_K = torch.topk(rating, k=max_K)
             rating = rating.cpu().numpy()
             # aucs = [ 
@@ -131,11 +138,15 @@ def Test(dataset, Recmodel, epoch, w=None, multicore=0):
             rating_list.append(rating_K.cpu())
             groundTrue_list.append(groundTrue)
         assert total_batch == len(users_list)
+        # (total_batch, batch_size, max(20))
+        # zip((배치 크기, 유저, 유저별 상위 positem), (배치 크기, 유저, 유저별 상위 positem))
         X = zip(rating_list, groundTrue_list)
         if multicore == 1:
             pre_results = pool.map(test_one_batch, X)
         else:
             pre_results = []
+            # total_batch 만큼 반복
+            # ((배치 크기, 유저, 유저별 상위 positem), (배치 크기, 유저, 유저별 상위 positem))
             for x in X:
                 pre_results.append(test_one_batch(x))
         scale = float(u_batch_size/len(users))

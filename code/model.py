@@ -128,6 +128,7 @@ class LightGCN(BasicModel):
         print(f"lgn is already to go(dropout:{self.config['dropout']})")
 
         # print("save_txt")
+    # Dropout 된 희소 행렬 반환
     def __dropout_x(self, x, keep_prob):
         size = x.size()
         index = x.indices().t()
@@ -142,6 +143,7 @@ class LightGCN(BasicModel):
     def __dropout(self, keep_prob):
         if self.A_split:
             graph = []
+            # self.Graph는 sparse matrix인데, 이게 실행이 될까?
             for g in self.Graph:
                 graph.append(self.__dropout_x(g, keep_prob))
         else:
@@ -160,6 +162,7 @@ class LightGCN(BasicModel):
         if self.config['dropout']:
             if self.training:
                 print("droping")
+                # mask 된 희소 행렬
                 g_droped = self.__dropout(self.keep_prob)
             else:
                 g_droped = self.Graph        
@@ -167,6 +170,7 @@ class LightGCN(BasicModel):
             g_droped = self.Graph    
         
         for layer in range(self.n_layers):
+            # A_split이 갖는 의미는? 메모리가 작아서 희소 행렬 나누어 계산하는것인가?
             if self.A_split:
                 temp_emb = []
                 for f in range(len(g_droped)):
@@ -174,19 +178,38 @@ class LightGCN(BasicModel):
                 side_emb = torch.cat(temp_emb, dim=0)
                 all_emb = side_emb
             else:
+                # embedding 가중치와 user-item행렬간 연관도 측정
+                # ((user_n + item_n), emb_size)
                 all_emb = torch.sparse.mm(g_droped, all_emb)
             embs.append(all_emb)
+        # embs -> (원본 그래프와 embedding 가중치의 곱)*4 
+        # 동일한 그래프가 4개 들어있음
+        # ((user_n + item_n), 4, emb_size)
+        #   [[emb],  layer1의 임베딩
+        #    [emb],  layer2 
+        #    [emb],  layer3
+        #    [emb]], layer4
+        # 이게 user_n+item_n개 만큼
         embs = torch.stack(embs, dim=1)
         #print(embs.size())
+        # 4개 layer값 모두 더하기
+        # ((user_n + item_n), emb_size)
         light_out = torch.mean(embs, dim=1)
         users, items = torch.split(light_out, [self.num_users, self.num_items])
         return users, items
     
+    # 학습된 embedding을 기반으로 test rating
     def getUsersRating(self, users):
+        # 추론 결과 도출
+        # all_users -> (user_n, emb_size)
+        # all_items -> (item_n, emb_size)
         all_users, all_items = self.computer()
+        # (batch_size, emb_size)
         users_emb = all_users[users.long()]
         items_emb = all_items
         # self.f = nn.Sigmoid()
+        # (batch_size, item_n)
+        # 시그모이드 함수 통과시킴 -> 선호할 확률 출력
         rating = self.f(torch.matmul(users_emb, items_emb.t()))
         return rating
     
