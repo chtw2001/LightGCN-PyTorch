@@ -35,6 +35,7 @@ class PairWiseModel(BasicModel):
         """
         raise NotImplementedError
     
+# 완전히 구현되어있지 않은 모델임. 다른 모델의 기반으로 사용될 수도 있겠다.
 class PureMF(BasicModel):
     def __init__(self, 
                  config:dict, 
@@ -45,12 +46,14 @@ class PureMF(BasicModel):
         self.latent_dim = config['latent_dim_rec']
         self.f = nn.Sigmoid()
         self.__init_weight()
+        # self.Graph가 없음
         
     def __init_weight(self):
         self.embedding_user = torch.nn.Embedding(
             num_embeddings=self.num_users, embedding_dim=self.latent_dim)
         self.embedding_item = torch.nn.Embedding(
             num_embeddings=self.num_items, embedding_dim=self.latent_dim)
+        # 기본적으로 평균 0, 표준편차 1로 초기화
         print("using Normal distribution N(0,1) initialization for PureMF")
         
     def getUsersRating(self, users):
@@ -182,17 +185,16 @@ class LightGCN(BasicModel):
                 # ((user_n + item_n), emb_size)
                 all_emb = torch.sparse.mm(g_droped, all_emb)
             embs.append(all_emb)
-        # embs -> (원본 그래프와 embedding 가중치의 곱)*4 
-        # 동일한 그래프가 4개 들어있음
-        # ((user_n + item_n), 4, emb_size)
+        # embs -> (원본 그래프와 embedding 가중치의 곱)*3
+        # 동일한 그래프가 3개 들어있음
+        # ((user_n + item_n), 3, emb_size)
         #   [[emb],  layer1의 임베딩
         #    [emb],  layer2 
-        #    [emb],  layer3
-        #    [emb]], layer4
+        #    [emb]]  layer3
         # 이게 user_n+item_n개 만큼
         embs = torch.stack(embs, dim=1)
         #print(embs.size())
-        # 4개 layer값 모두 더하기
+        # 3개 layer값 모두 더하기
         # ((user_n + item_n), emb_size)
         light_out = torch.mean(embs, dim=1)
         users, items = torch.split(light_out, [self.num_users, self.num_items])
@@ -214,15 +216,19 @@ class LightGCN(BasicModel):
         return rating
     
     def getEmbedding(self, users, pos_items, neg_items):
+        # all_users -> (user_n, emb_size)
+        # all_items -> (item_n, emb_size)
         all_users, all_items = self.computer()
         users_emb = all_users[users]
         pos_emb = all_items[pos_items]
         neg_emb = all_items[neg_items]
+        # 학습 된 가중치 그대로. 원본 그래프와 계산 x
         users_emb_ego = self.embedding_user(users)
         pos_emb_ego = self.embedding_item(pos_items)
         neg_emb_ego = self.embedding_item(neg_items)
         return users_emb, pos_emb, neg_emb, users_emb_ego, pos_emb_ego, neg_emb_ego
     
+    # PureMF와 동일한 동작
     def bpr_loss(self, users, pos, neg):
         (users_emb, pos_emb, neg_emb, 
         userEmb0,  posEmb0, negEmb0) = self.getEmbedding(users.long(), pos.long(), neg.long())
@@ -240,6 +246,8 @@ class LightGCN(BasicModel):
        
     def forward(self, users, items):
         # compute embedding
+        # all_users -> (user_n, emb_size)
+        # all_items -> (item_n, emb_size)
         all_users, all_items = self.computer()
         # print('forward')
         #all_users, all_items = self.computer()

@@ -65,6 +65,7 @@ def test_one_batch(X):
     # X = ((배치 크기, 유저, 유저별 상위 positem), (배치 크기, 유저, 유저별 상위 positem))
     sorted_items = X[0].numpy()
     groundTrue = X[1]
+    # (len(sorted_items), )
     # (배치 크기, [T, F, T, F ...])
     r = utils.getLabel(groundTrue, sorted_items)
     pre, recall, ndcg = [], [], []
@@ -93,7 +94,7 @@ def Test(dataset, Recmodel, epoch, w=None, multicore=0):
                'recall': np.zeros(len(world.topks)),
                'ndcg': np.zeros(len(world.topks))}
     with torch.no_grad():
-        # testDict -> key: user, value: item 
+        # testDict -> key: user, value: items
         users = list(testDict.keys())
         try:
             assert u_batch_size <= len(users) / 10

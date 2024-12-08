@@ -265,6 +265,7 @@ def NDCGatK_r(test_data,r,k):
         length = k if k <= len(items) else len(items)
         test_matrix[i, :length] = 1
     max_r = test_matrix
+    # 순위별로 나누는 수 크게 설정
     idcg = np.sum(max_r * 1./np.log2(np.arange(2, k + 2)), axis=1)
     dcg = pred_data*(1./np.log2(np.arange(2, k + 2)))
     dcg = np.sum(dcg, axis=1)
